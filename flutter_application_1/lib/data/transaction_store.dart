@@ -4,6 +4,18 @@ import '../models/transaction_model.dart';
 class TransactionStore extends ChangeNotifier {
   final List<Transaction> _transactions = [];
   final Map<String, double> _categoryLimits = {};
+  final List<String> _customCategories = [];
+
+  List<String> get customCategories => List.unmodifiable(_customCategories);
+
+  void addCustomCategory(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return;
+    if (_customCategories.contains(n)) return;
+    if (expenseCategories.contains(n)) return;
+    _customCategories.add(n);
+    notifyListeners();
+  }
 
   List<Transaction> get transactions => List.unmodifiable(_transactions);
 

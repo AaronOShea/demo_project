@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app/transaction_provider.dart';
+import '../app/settings_provider.dart';
 import '../data/transaction_store.dart';
 import '../models/transaction_model.dart';
 import 'add_transaction_screen.dart';
@@ -9,6 +10,7 @@ class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   static const _categoryIcons = {
+    'Savings': Icons.savings_rounded,
     'Food': Icons.restaurant_rounded,
     'Transport': Icons.directions_car_rounded,
     'Shopping': Icons.shopping_bag_rounded,
@@ -18,15 +20,28 @@ class DashboardScreen extends StatelessWidget {
     'Other': Icons.category_rounded,
   };
 
+  static IconData _iconForCategory(String category, Map<String, IconData> icons) {
+    return icons[category] ?? Icons.category_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = TransactionProvider.of(context);
+    final settingsStore = SettingsProvider.of(context);
+    final currencySymbol = settingsStore.currencySymbol;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
+      backgroundColor: const Color(0xFFF2F7F2),
       appBar: AppBar(
         title: const Text('Budget'),
         backgroundColor: const Color(0xFF2E7D32),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_rounded),
+            tooltip: 'Set monthly budget',
+            onPressed: () => _showSetBudgetDialog(context, store, currencySymbol),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
@@ -44,36 +59,49 @@ class DashboardScreen extends StatelessWidget {
         label: const Text('Add Expense'),
       ),
       body: ListenableBuilder(
-        listenable: store,
+        listenable: Listenable.merge([store, settingsStore]),
         builder: (context, _) {
-          final income = store.incomeThisMonth;
           final spent = store.spentThisMonth;
-          final left = store.remainingThisMonth;
+          final budget = store.monthlyBudget;
+          final hasBudget = store.hasBudgetSet;
+          final effectiveIncome = settingsStore.effectiveMonthlyIncome;
+          final total = hasBudget && budget > 0 ? budget : effectiveIncome;
+          final left = total - spent;
           final expenses = store.expensesThisMonth;
           final byCategory = store.spentByCategoryThisMonth;
+          final categories = [...expenseCategories, ...store.customCategories];
 
           return CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _MonthHeader(),
-                      const SizedBox(height: 16),
-                      _SummarySection(
-                        moneyIn: income,
+                      const SizedBox(height: 20),
+                      _BudgetDoughnut(
+                        spent: spent,
+                        total: total,
+                        currencySymbol: currencySymbol,
+                      ),
+                      const SizedBox(height: 20),
+                      _SummaryRow(
                         spent: spent,
                         left: left,
+                        currencySymbol: currencySymbol,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 28),
                       _SectionTitle('Budget by category'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       _BudgetCategoriesList(
+                        categories: categories,
                         byCategory: byCategory,
                         store: store,
                         categoryIcons: _categoryIcons,
+                        currencySymbol: currencySymbol,
+                        onAddCategory: () => _showAddCategoryDialog(context, store),
                       ),
                       const SizedBox(height: 24),
                       _SectionTitle('Recent expenses'),
@@ -108,6 +136,7 @@ class DashboardScreen extends StatelessWidget {
                         return _ExpenseListTile(
                           transaction: t,
                           categoryIcons: _categoryIcons,
+                          currencySymbol: currencySymbol,
                         );
                       },
                       childCount: expenses.length,
@@ -120,6 +149,76 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showSetBudgetDialog(
+  BuildContext context,
+  TransactionStore store,
+  String currencySymbol,
+) {
+  final controller = TextEditingController(
+    text: store.monthlyBudget > 0 ? store.monthlyBudget.toStringAsFixed(0) : '',
+  );
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Monthly budget'),
+      content: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: 'Amount',
+          prefixText: '$currencySymbol ',
+        ),
+        keyboardType: TextInputType.number,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
+          onPressed: () {
+            final v = double.tryParse(controller.text.trim().replaceAll(',', '.'));
+            if (v != null && v >= 0) {
+              store.setMonthlyBudget(v);
+              if (context.mounted) Navigator.pop(ctx);
+            }
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showAddCategoryDialog(BuildContext context, TransactionStore store) {
+  final controller = TextEditingController();
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Add category'),
+      content: TextField(
+        controller: controller,
+        decoration: const InputDecoration(
+          labelText: 'Category name',
+          hintText: 'e.g. Subscriptions',
+        ),
+        textCapitalization: TextCapitalization.words,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
+          onPressed: () {
+            final name = controller.text.trim();
+            if (name.isNotEmpty) {
+              store.addCustomCategory(name);
+              if (context.mounted) Navigator.pop(ctx);
+            }
+          },
+          child: const Text('Add'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _MonthHeader extends StatelessWidget {
@@ -142,114 +241,200 @@ class _MonthHeader extends StatelessWidget {
   }
 }
 
-class _SummarySection extends StatelessWidget {
-  final double moneyIn;
+class _BudgetDoughnut extends StatelessWidget {
   final double spent;
-  final double left;
+  final double total;
+  final String currencySymbol;
 
-  const _SummarySection({
-    required this.moneyIn,
+  const _BudgetDoughnut({
     required this.spent,
-    required this.left,
-  });
-
-  static String _fmt(double v) {
-    final abs = v.abs();
-    if (abs >= 1000) {
-      final s = abs.toStringAsFixed(0).replaceAllMapped(
-            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-            (m) => '${m[1]},',
-          );
-      return '${v < 0 ? '-' : ''}\$$s';
-    }
-    return '\$${v.toStringAsFixed(2)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SummaryCard(
-            label: 'Money In',
-            value: moneyIn,
-            color: const Color(0xFF2E7D32),
-            formatValue: _fmt(moneyIn),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SummaryCard(
-            label: 'Spent',
-            value: spent,
-            color: const Color(0xFFB71C1C),
-            formatValue: _fmt(spent),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SummaryCard(
-            label: 'Left',
-            value: left,
-            color: left >= 0
-                ? const Color(0xFF1B5E20)
-                : const Color(0xFFB71C1C),
-            formatValue: _fmt(left),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryCard extends StatelessWidget {
-  final String label;
-  final double value;
-  final Color color;
-  final String formatValue;
-
-  const _SummaryCard({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.formatValue,
+    required this.total,
+    required this.currencySymbol,
   });
 
   @override
   Widget build(BuildContext context) {
+    final safeTotal = total > 0 ? total : 1.0;
+    final spentPct = (spent / safeTotal).clamp(0.0, 1.0);
+    final remainingPct = 1.0 - spentPct;
+    final left = total - spent;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: Colors.grey.shade200),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
+            SizedBox(
+              width: 180,
+              height: 180,
+              child: CustomPaint(
+                painter: _DoughnutPainter(
+                  spentFraction: spentPct,
+                  spentColor: const Color(0xFF1B5E20),
+                  remainingColor: left >= 0 ? const Color(0xFF1565C0) : const Color(0xFFB71C1C),
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              formatValue,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _LegendDot(color: const Color(0xFF1B5E20)),
+                const SizedBox(width: 6),
+                Text('Spent', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                const SizedBox(width: 20),
+                _LegendDot(color: left >= 0 ? const Color(0xFF1565C0) : const Color(0xFFB71C1C)),
+                const SizedBox(width: 6),
+                Text(left >= 0 ? 'Left' : 'Over', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+
+  const _LegendDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _DoughnutPainter extends CustomPainter {
+  final double spentFraction;
+  final Color spentColor;
+  final Color remainingColor;
+
+  _DoughnutPainter({
+    required this.spentFraction,
+    required this.spentColor,
+    required this.remainingColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 * 0.85;
+    const strokeWidth = 24.0;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    const startAngle = -3.14159265359 / 2; // top
+    final remainingFraction = 1.0 - spentFraction;
+    if (spentFraction > 0) {
+      final spentPaint = Paint()
+        ..color = spentColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(rect, startAngle, spentFraction * 2 * 3.14159265359, false, spentPaint);
+    }
+    if (remainingFraction > 0) {
+      final remainingPaint = Paint()
+        ..color = remainingColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        rect,
+        startAngle + spentFraction * 2 * 3.14159265359,
+        remainingFraction * 2 * 3.14159265359,
+        false,
+        remainingPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DoughnutPainter old) =>
+      old.spentFraction != spentFraction || old.spentColor != spentColor || old.remainingColor != remainingColor;
+}
+
+class _SummaryRow extends StatelessWidget {
+  final double spent;
+  final double left;
+  final String currencySymbol;
+
+  const _SummaryRow({
+    required this.spent,
+    required this.left,
+    required this.currencySymbol,
+  });
+
+  String _fmt(double v) {
+    final abs = v.abs();
+    if (abs >= 1000) {
+      return abs.toStringAsFixed(0).replaceAllMapped(
+            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (m) => '${m[1]},',
+          );
+    }
+    return abs.toStringAsFixed(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final leftColor = left >= 0 ? const Color(0xFF1565C0) : const Color(0xFFB71C1C);
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B5E20).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Spent', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                Text(
+                  '$currencySymbol${_fmt(spent)}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            decoration: BoxDecoration(
+              color: leftColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(left >= 0 ? 'Left' : 'Over', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                Text(
+                  '${left >= 0 ? '' : '-'}$currencySymbol${_fmt(left.abs())}',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: leftColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -273,38 +458,85 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _BudgetCategoriesList extends StatelessWidget {
+  final List<String> categories;
   final Map<String, double> byCategory;
   final TransactionStore store;
   final Map<String, IconData> categoryIcons;
+  final String currencySymbol;
+  final VoidCallback onAddCategory;
 
   const _BudgetCategoriesList({
+    required this.categories,
     required this.byCategory,
     required this.store,
     required this.categoryIcons,
+    required this.currencySymbol,
+    required this.onAddCategory,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: expenseCategories.map((category) {
-        final spent = byCategory[category] ?? 0.0;
-        final limit = store.getCategoryLimit(category);
-        return _BudgetCategoryCard(
-          categoryName: category,
-          spent: spent,
-          limit: limit,
-          icon: categoryIcons[category] ?? Icons.category_rounded,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CategoryDetailScreen(categoryName: category),
+      children: [
+        ...categories.map((category) {
+          final spent = byCategory[category] ?? 0.0;
+          final limit = store.getCategoryLimit(category);
+          return _BudgetCategoryCard(
+            categoryName: category,
+            spent: spent,
+            limit: limit,
+            icon: DashboardScreen._iconForCategory(category, categoryIcons),
+            currencySymbol: currencySymbol,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CategoryDetailScreen(categoryName: category),
+                ),
+              );
+            },
+            onSetLimit: () => _showSetLimitDialog(context, store, category),
+          );
+        }),
+        const SizedBox(height: 10),
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onAddCategory,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
               ),
-            );
-          },
-          onSetLimit: () => _showSetLimitDialog(context, store, category),
-        );
-      }).toList(),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.add_rounded, color: Colors.grey.shade600, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Add category',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -316,15 +548,16 @@ class _BudgetCategoriesList extends StatelessWidget {
     final controller = TextEditingController(
       text: store.getCategoryLimit(category)?.toStringAsFixed(0) ?? '',
     );
+    final symbol = currencySymbol;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Set limit for $category'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Monthly limit',
-            prefixText: '\$ ',
+            prefixText: '$symbol ',
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           autofocus: true,
@@ -358,6 +591,7 @@ class _BudgetCategoryCard extends StatelessWidget {
   final double spent;
   final double? limit;
   final IconData icon;
+  final String currencySymbol;
   final VoidCallback onTap;
   final VoidCallback onSetLimit;
 
@@ -366,6 +600,7 @@ class _BudgetCategoryCard extends StatelessWidget {
     required this.spent,
     required this.limit,
     required this.icon,
+    required this.currencySymbol,
     required this.onTap,
     required this.onSetLimit,
   });
@@ -436,8 +671,8 @@ class _BudgetCategoryCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 hasLimit
-                    ? '\$${spent.toStringAsFixed(0)} / \$${limit!.toStringAsFixed(0)}'
-                    : 'Spent: \$${spent.toStringAsFixed(0)} (no limit set)',
+                    ? '$currencySymbol${spent.toStringAsFixed(0)} / $currencySymbol${limit!.toStringAsFixed(0)}'
+                    : 'Spent: $currencySymbol${spent.toStringAsFixed(0)} (no limit set)',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey.shade700,
@@ -457,7 +692,7 @@ class _BudgetCategoryCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Over by \$${(spent - limit!).toStringAsFixed(0)}',
+                    'Over by $currencySymbol${(spent - limit!).toStringAsFixed(0)}',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -476,10 +711,12 @@ class _BudgetCategoryCard extends StatelessWidget {
 class _ExpenseListTile extends StatelessWidget {
   final Transaction transaction;
   final Map<String, IconData> categoryIcons;
+  final String currencySymbol;
 
   const _ExpenseListTile({
     required this.transaction,
     required this.categoryIcons,
+    required this.currencySymbol,
   });
 
   static String _formatDate(DateTime d) {
@@ -523,7 +760,7 @@ class _ExpenseListTile extends StatelessWidget {
           ),
         ),
         trailing: Text(
-          '\$${transaction.amount.toStringAsFixed(2)}',
+          '$currencySymbol${transaction.amount.toStringAsFixed(2)}',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 16,

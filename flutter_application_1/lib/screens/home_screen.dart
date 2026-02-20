@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app/transaction_provider.dart';
+import '../app/settings_provider.dart';
+import '../data/settings_store.dart';
 import '../models/transaction_model.dart';
 import 'add_transaction_screen.dart';
 
@@ -18,15 +20,18 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = TransactionProvider.of(context);
+    final settingsStore = SettingsProvider.of(context);
+    final currencySymbol = settingsStore.currencySymbol;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F5),
       body: ListenableBuilder(
-        listenable: store,
+        listenable: Listenable.merge([store, settingsStore]),
         builder: (context, _) {
-          final remaining = store.remainingThisMonth;
           final spent = store.spentThisMonth;
           final budget = store.monthlyBudget;
           final hasBudget = store.hasBudgetSet;
+          final effectiveIncome = settingsStore.effectiveMonthlyIncome;
+          final remaining = (hasBudget && budget > 0 ? budget : effectiveIncome) - spent;
           final byCategory = store.spentByCategoryThisMonth;
 
           return CustomScrollView(
@@ -43,6 +48,12 @@ class HomeScreen extends StatelessWidget {
                           remaining: remaining,
                           budget: budget,
                           hasBudget: hasBudget,
+                          currencySymbol: currencySymbol,
+                        ),
+                        const SizedBox(height: 20),
+                        _IncomeCard(
+                          settingsStore: settingsStore,
+                          currencySymbol: currencySymbol,
                         ),
                         const SizedBox(height: 24),
                         const _SectionLabel('Where your money went'),
@@ -77,6 +88,7 @@ class HomeScreen extends StatelessWidget {
                           spent: spent,
                           onTap: () => onOpenChat?.call(),
                         ),
+                        const SizedBox(height: 24),
                         const SizedBox(height: 32),
                       ],
                     ),
@@ -102,15 +114,162 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+class _IncomeCard extends StatelessWidget {
+  final SettingsStore settingsStore;
+  final String currencySymbol;
+
+  const _IncomeCard({
+    required this.settingsStore,
+    required this.currencySymbol,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effective = settingsStore.effectiveMonthlyIncome;
+    final hasPay = settingsStore.payAmount > 0;
+    String subtitle;
+    if (hasPay) {
+      final freq = settingsStore.payFrequency;
+      final f = freq == 'weekly' ? 'week' : freq == 'biweekly' ? '2 weeks' : 'month';
+      subtitle = '${currencySymbol}${settingsStore.payAmount.toStringAsFixed(0)} per $f';
+    } else {
+      subtitle = 'Tap to add your income & pay frequency';
+    }
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _showIncomeDialog(context, settingsStore, currencySymbol),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.payments_rounded, color: Color(0xFF2E7D32), size: 26),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your income',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    Text(
+                      '$currencySymbol${effective.toStringAsFixed(0)} / month',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1B5E20),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade500),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static void _showIncomeDialog(BuildContext context, SettingsStore store, String currencySymbol) {
+    final amountController = TextEditingController(
+      text: store.payAmount > 0 ? store.payAmount.toStringAsFixed(0) : '',
+    );
+    var frequency = store.payFrequency;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Your income'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'We\'ll use your default monthly income from Profile unless you set pay below.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                decoration: InputDecoration(
+                  labelText: 'Amount per pay',
+                  prefixText: '$currencySymbol ',
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              const Text('How often do you get paid?', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: frequency,
+                decoration: const InputDecoration(isDense: true),
+                items: const [
+                  DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                  DropdownMenuItem(value: 'biweekly', child: Text('Every 2 weeks')),
+                  DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                ],
+                onChanged: (v) => setState(() => frequency = v ?? 'monthly'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
+              onPressed: () {
+                final amount = double.tryParse(amountController.text.trim().replaceAll(',', '.'));
+                if (amount != null && amount > 0) {
+                  store.setPay(amount, frequency);
+                  if (context.mounted) Navigator.pop(ctx);
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _HeroCard extends StatelessWidget {
   final double remaining;
   final double budget;
   final bool hasBudget;
+  final String currencySymbol;
 
   const _HeroCard({
     required this.remaining,
     required this.budget,
     required this.hasBudget,
+    required this.currencySymbol,
   });
 
   @override
@@ -159,8 +318,8 @@ class _HeroCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             remaining >= 0
-                ? '\$${_formatAmount(remaining)} left'
-                : 'Over by \$${_formatAmount(-remaining)}',
+                ? '$currencySymbol${_formatAmount(remaining)} left'
+                : 'Over by $currencySymbol${_formatAmount(-remaining)}',
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.w700,

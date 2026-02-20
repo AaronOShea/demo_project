@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app/transaction_provider.dart';
+import '../app/settings_provider.dart';
 import '../data/transaction_store.dart';
 import '../models/transaction_model.dart';
 
@@ -9,6 +10,7 @@ class CategoryDetailScreen extends StatelessWidget {
   final String categoryName;
 
   static const _categoryIcons = {
+    'Savings': Icons.savings_rounded,
     'Food': Icons.restaurant_rounded,
     'Transport': Icons.directions_car_rounded,
     'Shopping': Icons.shopping_bag_rounded,
@@ -21,6 +23,7 @@ class CategoryDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = TransactionProvider.of(context);
+    final currencySymbol = SettingsProvider.of(context).currencySymbol;
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
@@ -39,7 +42,7 @@ class CategoryDetailScreen extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
                 tooltip: 'Set limit',
-                onPressed: () => _showSetLimitDialog(context, store),
+                onPressed: () => _showSetLimitDialog(context, store, currencySymbol),
               ),
             ],
           ),
@@ -78,7 +81,7 @@ class CategoryDetailScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '\$${spent.toStringAsFixed(2)}',
+                              '$currencySymbol${spent.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
@@ -87,7 +90,7 @@ class CategoryDetailScreen extends StatelessWidget {
                             ),
                             if (limit != null && limit > 0)
                               Text(
-                                'Limit: \$${limit.toStringAsFixed(0)}',
+                                'Limit: $currencySymbol${limit.toStringAsFixed(0)}',
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: Colors.grey.shade600,
@@ -123,7 +126,7 @@ class CategoryDetailScreen extends StatelessWidget {
                   ),
                 )
               else
-                ...expenses.map((t) => _ExpenseTile(transaction: t)),
+                ...expenses.map((t) => _ExpenseTile(transaction: t, currencySymbol: currencySymbol)),
             ],
           ),
         );
@@ -131,7 +134,7 @@ class CategoryDetailScreen extends StatelessWidget {
     );
   }
 
-  void _showSetLimitDialog(BuildContext context, TransactionStore store) {
+  void _showSetLimitDialog(BuildContext context, TransactionStore store, String currencySymbol) {
     final controller = TextEditingController(
       text: store.getCategoryLimit(categoryName)?.toStringAsFixed(0) ?? '',
     );
@@ -141,9 +144,9 @@ class CategoryDetailScreen extends StatelessWidget {
         title: Text('Set limit for $categoryName'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Monthly limit',
-            prefixText: '\$ ',
+            prefixText: '$currencySymbol ',
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           autofocus: true,
@@ -174,8 +177,9 @@ class CategoryDetailScreen extends StatelessWidget {
 
 class _ExpenseTile extends StatelessWidget {
   final Transaction transaction;
+  final String currencySymbol;
 
-  const _ExpenseTile({required this.transaction});
+  const _ExpenseTile({required this.transaction, required this.currencySymbol});
 
   static String _formatDate(DateTime d) {
     const months = [
@@ -212,7 +216,7 @@ class _ExpenseTile extends StatelessWidget {
               )
             : null,
         trailing: Text(
-          '\$${transaction.amount.toStringAsFixed(2)}',
+          '$currencySymbol${transaction.amount.toStringAsFixed(2)}',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 16,

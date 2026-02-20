@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app/transaction_provider.dart';
+import '../app/settings_provider.dart';
 import '../models/transaction_model.dart';
 
 class AddTransactionScreen extends StatefulWidget {
@@ -65,9 +66,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           children: [
             TextField(
               controller: _amountController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Amount',
-                prefixText: '\$ ',
+                prefixText: '${SettingsProvider.of(context).currencySymbol} ',
               ),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -93,14 +94,26 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             if (_type == TransactionType.expense) ...[
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _category,
-                decoration: const InputDecoration(labelText: 'Category'),
-                items: expenseCategories
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) setState(() => _category = value);
+              Builder(
+                builder: (context) {
+                  final store = TransactionProvider.of(context);
+                  final categories = [...expenseCategories, ...store.customCategories];
+                  final value = categories.contains(_category) ? _category : categories.first;
+                  if (value != _category) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() => _category = value);
+                    });
+                  }
+                  return DropdownButtonFormField<String>(
+                    value: value,
+                    decoration: const InputDecoration(labelText: 'Category'),
+                    items: categories
+                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _category = v);
+                    },
+                  );
                 },
               ),
               const SizedBox(height: 16),

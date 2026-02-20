@@ -23,6 +23,7 @@ class Transaction {
 
 /// Expense categories used in the app.
 const List<String> expenseCategories = [
+  'Savings',
   'Food',
   'Transport',
   'Shopping',

@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from openai import OpenAI
+from openai import APIError, AuthenticationError, RateLimitError
 from django.conf import settings
 import logging
 
@@ -33,9 +34,17 @@ def _build_system_prompt(user_context):
         return base
 
     parts = [base, "\n\n**Current user data (use this to personalise your answers):**"]
-    income = user_context.get("income_this_month")
-    if income is not None:
-        parts.append(f"- Income this month: {income:.2f}")
+    transaction_income = user_context.get("income_this_month") or 0
+    expected_income = user_context.get("expected_monthly_income") or 0
+    
+    # Show income: prefer transaction income, fallback to expected monthly income
+    if transaction_income > 0:
+        parts.append(f"- Income this month (from transactions): {transaction_income:.2f}")
+        if expected_income > 0 and expected_income != transaction_income:
+            parts.append(f"- Expected monthly income: {expected_income:.2f}")
+    elif expected_income > 0:
+        parts.append(f"- Monthly income: {expected_income:.2f}")
+    
     spent = user_context.get("spent_this_month")
     if spent is not None:
         parts.append(f"- Spent this month: {spent:.2f}")

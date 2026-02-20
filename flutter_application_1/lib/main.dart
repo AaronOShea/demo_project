@@ -2,7 +2,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'auth/login_screen.dart';
 import 'data/transaction_store.dart';
+import 'data/settings_store.dart';
+import 'data/goals_store.dart';
 import 'app/transaction_provider.dart';
+import 'app/settings_provider.dart';
+import 'app/goals_provider.dart';
 import 'screens/main_shell.dart';
 import 'services/auth_service.dart';
 
@@ -38,13 +42,21 @@ class BudgetApp extends StatelessWidget {
           );
         }
         final store = TransactionStore();
+        final settingsStore = SettingsStore();
+        final goalsStore = GoalsStore();
         return TransactionProvider(
           store: store,
-          child: MaterialApp(
-            debugShowCheckedModeBanner: false,
-            title: 'AIFC Finance Coach',
-            theme: ThemeData(primarySwatch: Colors.green),
-            home: const MainShell(),
+          child: SettingsProvider(
+            store: settingsStore,
+            child: GoalsProvider(
+              store: goalsStore,
+              child: MaterialApp(
+                debugShowCheckedModeBanner: false,
+                title: 'AIFC Finance Coach',
+                theme: ThemeData(primarySwatch: Colors.green),
+                home: const MainShell(),
+              ),
+            ),
           ),
         );
       },

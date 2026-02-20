@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import '../app/transaction_provider.dart';
+import '../app/settings_provider.dart';
 import '../data/transaction_store.dart';
 import '../models/transaction_model.dart';
 
@@ -29,7 +30,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
 
   // Backend URL: Android emulator uses 10.0.2.2 to reach host machine;
-  // iOS simulator and others use localhost. Physical device needs your computer's IP.
   static String get _backendUrl {
     if (Platform.isAndroid) {
       return 'http://10.0.2.2:8000';
@@ -37,13 +37,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'http://localhost:8000';
   }
 
-  /// Build user context from TransactionStore for personalised AI answers.
-  static Map<String, dynamic>? _buildUserContext(TransactionStore store) {
-    final income = store.incomeThisMonth;
+  /// Build user context from TransactionStore and SettingsStore for personalised AI answers.
+  static Map<String, dynamic>? _buildUserContext(BuildContext context, TransactionStore store) {
+    final settingsStore = SettingsProvider.of(context);
+    
+    // Use effective monthly income from settings as the primary income value
+    // This is the income the user has configured, even if they haven't added income transactions
+    final effectiveIncome = settingsStore.effectiveMonthlyIncome;
+    final transactionIncome = store.incomeThisMonth;
+    
+    // Use transaction income if available, otherwise use the configured effective income
+    final income = transactionIncome > 0 ? transactionIncome : effectiveIncome;
+    
     final spent = store.spentThisMonth;
     final budget = store.monthlyBudget;
-    final remaining = store.remainingThisMonth;
-    final spentPct = store.spentPercentageOfIncome;
+    
+    // Calculate remaining: use budget if set, otherwise use effective income - spent
+    final remaining = budget > 0 ? (budget - spent) : (effectiveIncome - spent);
+    
+    // Recalculate spent percentage using the effective income
+    final spentPct = effectiveIncome > 0 ? (spent / effectiveIncome * 100).clamp(0.0, 200.0) : 0.0;
+    
     final byCategory = store.spentByCategoryThisMonth;
     final hasBudget = store.hasBudgetSet;
 
@@ -62,6 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return {
       'income_this_month': income,
+      'expected_monthly_income': effectiveIncome,  // The configured monthly income from settings
       'spent_this_month': spent,
       'monthly_budget': budget,
       'remaining_this_month': remaining,
@@ -286,7 +301,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     final store = TransactionProvider.of(context);
-    final userContext = _buildUserContext(store);
+    final userContext = _buildUserContext(context, store);
     final reply = await _fetchAIResponse(raw, userContext);
 
     setState(() {

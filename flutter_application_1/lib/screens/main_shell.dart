@@ -26,7 +26,7 @@ class _MainShellState extends State<MainShell> {
       const BudgetScreen(),
       const ChatScreen(),
       const GoalsScreen(),
-      const ProfileScreen(),
+      ProfileScreen(onNavigateToGoals: () => setState(() => _currentIndex = 3)),
     ];
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: screens),
