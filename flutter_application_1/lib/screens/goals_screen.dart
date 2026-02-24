@@ -1,11 +1,19 @@
+// Flutter UI package
 import 'package:flutter/material.dart';
+
+// Providers give access to app data/state (goals, settings, transactions)
 import '../app/goals_provider.dart';
 import '../app/settings_provider.dart';
 import '../app/transaction_provider.dart';
+
+// GoalsStore is the class that actually stores/updates the goals list
 import '../data/goals_store.dart';
+
+// Models for goals and transactions
 import '../models/goal_model.dart';
 import '../models/transaction_model.dart';
 
+// Screen that shows savings goals
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
 
@@ -13,64 +21,98 @@ class GoalsScreen extends StatefulWidget {
   State<GoalsScreen> createState() => _GoalsScreenState();
 }
 
-class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStateMixin {
+// State class (Stateful because it uses animations and dialogs)
+class _GoalsScreenState extends State<GoalsScreen>
+    with SingleTickerProviderStateMixin {
+
+  // Controls the fade-in animation
   late AnimationController _fadeController;
+
+  // The fade value (0 -> 1)
   late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    // Create the animation controller (how long the animation lasts)
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
+
+    // Make the animation curve smooth (ease out)
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
       curve: Curves.easeOut,
     );
+
+    // Start the fade animation when screen loads
     _fadeController.forward();
   }
 
   @override
   void dispose() {
+    // Clean up animation controller when leaving screen
     _fadeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+
+    // Get goals store (list of goals + methods to update them)
     final goalsStore = GoalsProvider.of(context);
+
+    // Get settings store (mainly used here for currency symbol)
     final settingsStore = SettingsProvider.of(context);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF2F7F2),
+
+      // Top bar
       appBar: AppBar(
         title: const Text('Goals'),
         backgroundColor: const Color(0xFF2E7D32),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
+
       body: SafeArea(
+
+        // Rebuild the UI whenever goalsStore changes
         child: ListenableBuilder(
           listenable: goalsStore,
           builder: (context, _) {
+
+            // Get all goals
             final goals = goalsStore.goals;
+
+            // True if there is at least 1 goal
             final hasGoals = goals.isNotEmpty;
+
+            // Get the current "primary" goal (if any)
             final primaryGoal = goalsStore.primaryGoal;
 
             return CustomScrollView(
               slivers: [
+
+                // Header section at the top
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                     child: Column(
                       children: [
+
+                        // Fade-in animation for the hero text + icon
                         FadeTransition(
                           opacity: _fadeAnimation,
                           child: Column(
                             children: [
-                              _SavingsJarHero(),
+                              _SavingsJarHero(), // big savings icon
                               const SizedBox(height: 20),
+
+                              // Main header text
                               Text(
                                 'Set a goal. Save for it. Get there.',
                                 textAlign: TextAlign.center,
@@ -83,6 +125,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                                 ),
                               ),
                               const SizedBox(height: 8),
+
+                              // Smaller helper text
                               Text(
                                 'Every amount you put in gets you closer.',
                                 textAlign: TextAlign.center,
@@ -95,10 +139,14 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                             ],
                           ),
                         ),
+
+                        // If goals exist, show two quick action cards
                         if (hasGoals) ...[
                           const SizedBox(height: 24),
                           _TeaserCards(
                             onAddGoal: () => _showAddGoalDialog(context, goalsStore),
+
+                            // Quick deposit only works if there is a primary goal
                             onQuickDeposit: primaryGoal != null
                                 ? () => _showAddSavingsDialog(
                                       context,
@@ -113,6 +161,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                     ),
                   ),
                 ),
+
+                // If no goals, show an empty-state message
                 if (!hasGoals)
                   SliverFillRemaining(
                     hasScrollBody: false,
@@ -145,26 +195,39 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                       ),
                     ),
                   )
+
+                // Otherwise, show the list of goal cards
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
+
+                          // Get goal at this index
                           final goal = goals[index];
+
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _GoalCard(
                               goal: goal,
                               currencySymbol: settingsStore.currencySymbol,
+
+                              // Make this goal the primary one
                               onSetPrimary: () => goalsStore.setPrimary(goal.id),
+
+                              // Mark as completed
                               onMarkCompleted: () => goalsStore.markCompleted(goal.id),
+
+                              // Open dialog to add money to this goal
                               onAddSavings: () => _showAddSavingsDialog(
                                 context,
                                 goalsStore,
                                 goal,
                                 settingsStore.currencySymbol,
                               ),
+
+                              // Confirm and remove the goal
                               onRemove: () => _confirmRemoveGoal(context, goalsStore, goal),
                             ),
                           );
@@ -178,6 +241,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
           },
         ),
       ),
+
+      // Bottom-right button to add a goal
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddGoalDialog(context, GoalsProvider.of(context)),
         backgroundColor: const Color(0xFF2E7D32),
@@ -187,12 +252,17 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
     );
   }
 
+  // Dialog to add a new goal (name + target amount + primary checkbox)
   Future<void> _showAddGoalDialog(BuildContext context, GoalsStore goalsStore) async {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
+
+    // Default: new goal becomes primary
     var setAsPrimary = true;
 
     if (!context.mounted) return;
+
+    // Show the dialog and wait for user action
     final result = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -204,6 +274,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+
+                    // Goal title input
                     TextField(
                       controller: titleController,
                       decoration: const InputDecoration(
@@ -212,7 +284,10 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                       ),
                       textCapitalization: TextCapitalization.sentences,
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Target amount input
                     TextField(
                       controller: amountController,
                       decoration: const InputDecoration(
@@ -220,7 +295,10 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                       ),
                       keyboardType: TextInputType.number,
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Checkbox to make it primary
                     CheckboxListTile(
                       value: setAsPrimary,
                       onChanged: (v) => setDialogState(() => setAsPrimary = v ?? true),
@@ -231,6 +309,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                   ],
                 ),
               ),
+
+              // Cancel / Add buttons
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
@@ -239,12 +319,15 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
                   onPressed: () {
+                    // Validate input before closing the dialog
                     final title = titleController.text.trim();
                     final amount = double.tryParse(
                       amountController.text.trim().replaceAll(',', '.'),
                     );
                     if (title.isEmpty) return;
                     if (amount == null || amount <= 0) return;
+
+                    // Close dialog with "true" meaning accepted
                     Navigator.of(context).pop(true);
                   },
                   child: const Text('Add'),
@@ -256,12 +339,19 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
       },
     );
 
+    // If user cancelled, stop
     if (result != true) return;
+
+    // Read inputs again
     final title = titleController.text.trim();
     final amount = double.tryParse(
       amountController.text.trim().replaceAll(',', '.'),
     );
+
+    // Final validation
     if (title.isEmpty || amount == null || amount <= 0) return;
+
+    // Create a new Goal object
     final goal = Goal(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
@@ -269,16 +359,23 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
       isPrimary: setAsPrimary,
       createdAt: DateTime.now(),
     );
+
+    // Add goal to the store
     goalsStore.addGoal(goal);
   }
 
+  // Dialog to add savings to an existing goal
   Future<void> _showAddSavingsDialog(
     BuildContext context,
     GoalsStore goalsStore,
     Goal goal,
     String currencySymbol,
   ) async {
+
+    // Maximum allowed is whatever is left to reach target
     final maxAdd = goal.targetAmount - goal.savedAmount;
+
+    // If already reached, show message and stop
     if (maxAdd <= 0) {
       if (!context.mounted) return;
       showDialog(
@@ -302,6 +399,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
     final controller = TextEditingController();
 
     if (!context.mounted) return;
+
+    // Show dialog asking how much to add
     final result = await showDialog<double>(
       context: context,
       builder: (context) => AlertDialog(
@@ -310,6 +409,8 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            // Show current saved vs target
             Text(
               'Current: $currencySymbol${goal.savedAmount.toStringAsFixed(0)} / $currencySymbol${goal.targetAmount.toStringAsFixed(0)}',
               style: TextStyle(
@@ -317,7 +418,10 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                 color: Colors.grey.shade700,
               ),
             ),
+
             const SizedBox(height: 6),
+
+            // Show max allowed to add
             Text(
               'Max you can add: $currencySymbol${maxAdd.toStringAsFixed(0)}',
               style: TextStyle(
@@ -326,7 +430,10 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
                 color: const Color(0xFF2E7D32),
               ),
             ),
+
             const SizedBox(height: 16),
+
+            // Amount input
             TextField(
               controller: controller,
               decoration: InputDecoration(
@@ -338,11 +445,14 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
             ),
           ],
         ),
+
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
+
+          // Add button returns the entered amount
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
             onPressed: () {
@@ -357,9 +467,15 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
       ),
     );
 
+    // If user entered a valid amount
     if (result != null && result > 0 && context.mounted) {
+
+      // Add amount to the goal (store might clamp it to maxAdd)
       final actualAdded = goalsStore.addToSavedAmount(goal.id, result);
+
       if (actualAdded > 0) {
+
+        // Also record it as an EXPENSE transaction (Savings category)
         final transactionStore = TransactionProvider.of(context);
         transactionStore.addTransaction(
           Transaction(
@@ -371,14 +487,22 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
             note: 'Goal: ${goal.title}',
           ),
         );
+
+        // Show a quick message at the bottom
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Added $currencySymbol${actualAdded.toStringAsFixed(0)} to ${goal.title}'),
+            content: Text(
+              'Added $currencySymbol${actualAdded.toStringAsFixed(0)} to ${goal.title}',
+            ),
             backgroundColor: const Color(0xFF2E7D32),
             behavior: SnackBarBehavior.floating,
           ),
         );
+
+        // Check if goal became completed after adding
         final updated = goalsStore.goals.where((g) => g.id == goal.id).firstOrNull;
+
+        // If completed, show congratulations dialog
         if (updated != null && updated.isCompleted) {
           _showCongratsDialog(context, goal.title);
         }
@@ -386,12 +510,15 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
     }
   }
 
+  // Shows a "goal completed" popup
   void _showCongratsDialog(BuildContext context, String goalTitle) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+
+        // Title row with celebration icon
         title: Row(
           children: [
             Icon(Icons.celebration_rounded, color: Colors.green.shade700, size: 32),
@@ -399,10 +526,13 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
             const Expanded(child: Text('Congratulations!')),
           ],
         ),
+
+        // Message
         content: Text(
           'You\'ve reached your goal: "$goalTitle". Well done!',
           style: const TextStyle(fontSize: 16),
         ),
+
         actions: [
           FilledButton(
             style: FilledButton.styleFrom(
@@ -417,11 +547,14 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
     );
   }
 
+  // Confirm dialog before removing a goal
   Future<void> _confirmRemoveGoal(
     BuildContext context,
     GoalsStore goalsStore,
     Goal goal,
   ) async {
+
+    // Ask user to confirm
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -434,20 +567,28 @@ class _GoalsScreenState extends State<GoalsScreen> with SingleTickerProviderStat
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove', style: TextStyle(color: Color(0xFFB71C1C))),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Color(0xFFB71C1C)),
+            ),
           ),
         ],
       ),
     );
+
+    // If confirmed, remove from store
     if (ok == true) goalsStore.removeGoal(goal.id);
   }
 }
 
+// Big icon at the top (savings jar hero)
 class _SavingsJarHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(28),
+
+      // Circle background with shadow
       decoration: BoxDecoration(
         color: Colors.green.shade50,
         shape: BoxShape.circle,
@@ -459,6 +600,8 @@ class _SavingsJarHero extends StatelessWidget {
           ),
         ],
       ),
+
+      // Icon inside
       child: Icon(
         Icons.savings_rounded,
         size: 72,
@@ -468,6 +611,7 @@ class _SavingsJarHero extends StatelessWidget {
   }
 }
 
+// The two quick action cards under the header
 class _TeaserCards extends StatelessWidget {
   final VoidCallback onAddGoal;
   final VoidCallback? onQuickDeposit;
@@ -492,6 +636,8 @@ class _TeaserCards extends StatelessWidget {
         Expanded(
           child: _TeaserCard(
             icon: Icons.add_circle_outline_rounded,
+
+            // If primary goal exists show quick deposit, otherwise same as new goal
             label: onQuickDeposit != null ? 'Quick deposit' : 'New goal',
             onTap: onQuickDeposit ?? onAddGoal,
           ),
@@ -501,6 +647,7 @@ class _TeaserCards extends StatelessWidget {
   }
 }
 
+// A single small card button
 class _TeaserCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -522,10 +669,13 @@ class _TeaserCard extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+
+          // Card border styling
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.grey.shade200),
           ),
+
           child: Column(
             children: [
               Icon(icon, size: 32, color: const Color(0xFF2E7D32)),
@@ -547,6 +697,7 @@ class _TeaserCard extends StatelessWidget {
   }
 }
 
+// Card widget for a single goal
 class _GoalCard extends StatelessWidget {
   final Goal goal;
   final String currencySymbol;
@@ -566,14 +717,22 @@ class _GoalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
+    // Calculate progress (0.0 to 1.0)
     final progress = goal.targetAmount > 0
         ? (goal.savedAmount / goal.targetAmount).clamp(0.0, 1.0)
         : 0.0;
+
+    // True if completed
     final isComplete = goal.isCompleted;
 
     return Card(
       elevation: 0,
+
+      // Completed goals have a light green background
       color: isComplete ? Colors.green.shade50 : null,
+
+      // Border styling (thicker for primary/completed)
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
@@ -585,11 +744,14 @@ class _GoalCard extends StatelessWidget {
           width: isComplete || goal.isPrimary ? 2 : 1,
         ),
       ),
+
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            // Completed message at top of card
             if (isComplete)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -608,6 +770,8 @@ class _GoalCard extends StatelessWidget {
                   ],
                 ),
               ),
+
+            // Row with icon + title + menu
             Row(
               children: [
                 Container(
@@ -623,6 +787,8 @@ class _GoalCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+
+                // Title and "primary goal" label
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -632,10 +798,14 @@ class _GoalCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
+
+                          // Strike through if complete
                           decoration: isComplete ? TextDecoration.lineThrough : null,
                           color: isComplete ? Colors.grey.shade700 : Colors.grey.shade800,
                         ),
                       ),
+
+                      // Show "Primary goal" text if this goal is primary
                       if (goal.isPrimary)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -651,11 +821,15 @@ class _GoalCard extends StatelessWidget {
                     ],
                   ),
                 ),
+
+                // If complete show check icon, otherwise show menu to remove
                 if (isComplete)
                   const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 28)
                 else
                   PopupMenuButton<String>(
                     icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade600),
+
+                    // Only one option: remove
                     onSelected: (_) => onRemove(),
                     itemBuilder: (_) => [
                       const PopupMenuItem(
@@ -672,7 +846,10 @@ class _GoalCard extends StatelessWidget {
                   ),
               ],
             ),
+
             const SizedBox(height: 14),
+
+            // Amounts row + percent
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -684,6 +861,8 @@ class _GoalCard extends StatelessWidget {
                     color: Colors.grey.shade800,
                   ),
                 ),
+
+                // Percent only if not complete
                 if (!isComplete)
                   Text(
                     '${(progress * 100).round()}%',
@@ -695,7 +874,10 @@ class _GoalCard extends StatelessWidget {
                   ),
               ],
             ),
+
             const SizedBox(height: 10),
+
+            // Progress bar
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
@@ -705,10 +887,14 @@ class _GoalCard extends StatelessWidget {
                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2E7D32)),
               ),
             ),
+
+            // Buttons (only if not complete)
             if (!isComplete) ...[
               const SizedBox(height: 14),
               Row(
                 children: [
+
+                  // Add savings button
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: onAddSavings,
@@ -723,13 +909,18 @@ class _GoalCard extends StatelessWidget {
                       label: const Text('Add savings'),
                     ),
                   ),
+
                   const SizedBox(width: 8),
+
+                  // Primary button (only if not already primary)
                   if (!goal.isPrimary)
                     TextButton.icon(
                       onPressed: onSetPrimary,
                       icon: const Icon(Icons.star_outline_rounded, size: 18),
                       label: const Text('Primary'),
                     ),
+
+                  // Done button (marks completed)
                   TextButton.icon(
                     onPressed: onMarkCompleted,
                     icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
