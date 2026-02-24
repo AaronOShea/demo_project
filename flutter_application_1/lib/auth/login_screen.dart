@@ -1,7 +1,13 @@
+// Import Firebase authentication (for login/signup)
 import 'package:firebase_auth/firebase_auth.dart';
+
+// Import Flutter UI components
 import 'package:flutter/material.dart';
+
+// Import your custom authentication service
 import '../services/auth_service.dart';
 
+// Login screen widget (stateful because UI changes)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -9,31 +15,46 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
+// State class that holds the logic and UI state
 class _LoginScreenState extends State<LoginScreen> {
+
+  // Controllers to read email and password text fields
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  // Reference to auth service
   final _auth = AuthService.instance;
 
+  // Whether user is signing up or signing in
   bool _isSignUp = false;
+
+  // Shows loading spinner when authenticating
   bool _isLoading = false;
+
+  // Holds any error message to display
   String? _errorText;
 
   @override
   void dispose() {
+    // Clean up controllers when screen is destroyed
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
+  // Handles email/password login or signup
   Future<void> _submit() async {
     setState(() {
       _errorText = null;
       _isLoading = true;
     });
+
     try {
+      // Get user input
       final email = _emailController.text.trim();
       final password = _passwordController.text;
 
+      // Basic validation
       if (email.isEmpty || password.isEmpty) {
         setState(() {
           _errorText = 'Please enter email and password';
@@ -42,19 +63,25 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      // If in signup mode → create account
       if (_isSignUp) {
         await _auth.createUserWithEmailAndPassword(
           email: email,
           password: password,
         );
       } else {
+        // Otherwise → sign in
         await _auth.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
       }
+
+      // Stop loading after success
       if (mounted) setState(() => _isLoading = false);
+
     } on FirebaseAuthException catch (e) {
+      // Firebase-specific errors
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -62,6 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     } catch (e) {
+      // Any other error
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -71,15 +99,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Handles Google sign-in
   Future<void> _signInWithGoogle() async {
     setState(() {
       _errorText = null;
       _isLoading = true;
     });
+
     try {
+      // Call Google sign-in from auth service
       await _auth.signInWithGoogle();
+
       if (mounted) setState(() => _isLoading = false);
+
     } on FirebaseAuthException catch (e) {
+      // Firebase error
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -87,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     } catch (e) {
+      // Other error
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -102,6 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Container(
         width: double.infinity,
         height: double.infinity,
+
+        // Green gradient background
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -112,18 +149,24 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
         ),
+
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               children: [
                 const SizedBox(height: 48),
+
+                // App icon
                 Icon(
                   Icons.account_balance_wallet_rounded,
                   size: 64,
                   color: Colors.white.withValues(alpha: 0.95),
                 ),
+
                 const SizedBox(height: 16),
+
+                // App title
                 Text(
                   'AIFC Finance Coach',
                   style: TextStyle(
@@ -134,7 +177,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
+
                 const SizedBox(height: 40),
+
+                // White login card
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                   decoration: BoxDecoration(
@@ -148,9 +194,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
+
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+
+                      // Email input
                       TextField(
                         controller: _emailController,
                         decoration: const InputDecoration(
@@ -161,7 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         autocorrect: false,
                         enabled: !_isLoading,
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Password input
                       TextField(
                         controller: _passwordController,
                         decoration: const InputDecoration(
@@ -171,6 +223,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         obscureText: true,
                         enabled: !_isLoading,
                       ),
+
+                      // Error message (only shows if exists)
                       if (_errorText != null) ...[
                         const SizedBox(height: 12),
                         Text(
@@ -182,7 +236,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ],
+
                       const SizedBox(height: 20),
+
+                      // Main sign in / sign up button
                       FilledButton(
                         onPressed: _isLoading ? null : _submit,
                         style: FilledButton.styleFrom(
@@ -192,6 +249,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
+
+                        // Show spinner when loading
                         child: _isLoading
                             ? const SizedBox(
                                 height: 22,
@@ -203,7 +262,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               )
                             : Text(_isSignUp ? 'Create Account' : 'Sign In'),
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Toggle between sign in and sign up
                       TextButton(
                         onPressed: _isLoading
                             ? null
@@ -222,9 +284,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
+
                       const SizedBox(height: 8),
                       const Divider(),
                       const SizedBox(height: 8),
+
+                      // Google sign in button
                       OutlinedButton.icon(
                         onPressed: _isLoading ? null : _signInWithGoogle,
                         icon: const Icon(Icons.g_mobiledata_rounded, size: 24),
@@ -241,6 +306,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 32),
               ],
             ),
